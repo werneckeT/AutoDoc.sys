@@ -8,7 +8,6 @@ namespace AutoDoc.LLM
     {
         private readonly RestClient _client = new(LlmBaseUrl);
         private const string LlmBaseUrl = "http://localhost:4456/";
-        private static readonly char[] Separator = ['\r', '\n'];
         private string? _modelIdentifier;
 
         public async Task<List<string?>> GetAvailableModelsAsync()
@@ -21,16 +20,25 @@ namespace AutoDoc.LLM
                 throw new Exception($"Error fetching models: {response.ErrorMessage}");
             }
 
-            using var document =
-                JsonDocument.Parse(response.Content ?? throw new InvalidOperationException("Invalid Llm response"));
+            using var document = JsonDocument.Parse(response.Content ?? throw new InvalidOperationException("Invalid Llm response"));
 
             return document.RootElement.GetProperty("data").EnumerateArray()
                 .Select(element => element.GetProperty("id").GetString())
                 .Where(modelId => !string.IsNullOrEmpty(modelId)).ToList();
         }
 
-        public async Task<string> GetDocumentationAsync(DocLengthEnum commentLength, string chunk)
+        public async Task<string> GetDocumentationAsync(DocLengthEnum commentLength, string method)
         {
+            return await GetDocumentationAsync(commentLength, method, 3);
+        }
+
+        private async Task<string> GetDocumentationAsync(DocLengthEnum commentLength, string method, int retry)
+        {
+            if (retry < 0)
+            {
+                throw new InvalidOperationException("LLM response validation failed.");
+            }
+
             if (string.IsNullOrEmpty(_modelIdentifier))
             {
                 var availableModels = await GetAvailableModelsAsync();
@@ -43,7 +51,7 @@ namespace AutoDoc.LLM
                 _modelIdentifier = availableModels[0];
             }
 
-            var prompt = GeneratePrompt(commentLength, chunk);
+            var prompt = GeneratePrompt(commentLength, method);
 
             var request = new RestRequest("v1/chat/completions", Method.Post);
             request.AddHeader("Content-Type", "application/json");
@@ -55,12 +63,9 @@ namespace AutoDoc.LLM
                     new
                     {
                         role = "system",
-                        content =
-                            @"  You are Autodoc.sys, a System specialized on Inline-Documentation of existing Source Code. 
-                                You will only respond with Code, no additional explanation, message, or anything, as you 
-                                are integrated into another system. You will be given a chunk of a source file. Your task 
-                                is to document the chunk for the user. You MUST return only the chunk. IT IS FORBIDDEN FOR 
-                                YOU TO CHANGE ANY CODE. YOUR ONLY TASK IS TO CREATE ADDITIONAL DOCUMENTATION INLINE. DO NOT ADD OR REMOVE ANY SYNTAX. YOUR ONLY TASK IS TO ADD DOCUMENTATION"
+                        content = @"You are Autodoc.sys, a System specialized on Inline-Documentation of existing Source Code. 
+                                    You will only respond with the documentation comment for the provided method. DO NOT INCLUDE ANY CODE. 
+                                    DO NOT ADD OR REMOVE ANY SYNTAX. ONLY RETURN THE DOCUMENTATION COMMENT. SPECIALIZE THE COMMENTS ON THE ENVIRONMENT."
                     },
                     new { role = "user", content = prompt }
                 },
@@ -78,22 +83,21 @@ namespace AutoDoc.LLM
                 throw new Exception($"Error from LLM: {response.ErrorMessage}");
             }
 
-            var documentedChunk =
-                ExtractContentFromResponse(response.Content ??
-                                           throw new InvalidOperationException("Invalid Llm response"));
+            var documentationComment = ExtractContentFromResponse(response.Content ?? throw new InvalidOperationException("Invalid Llm response"));
 
-            if (!ValidateResponse(documentedChunk))
+            if (!ValidateResponse(documentationComment))
             {
-                throw new InvalidOperationException("LLM response validation failed.");
+                Console.WriteLine("[ERROR] LLM response validation failed.\nRetry...");
+                return await GetDocumentationAsync(commentLength, method, retry - 1);
             }
 
-            return documentedChunk;
+            return documentationComment;
         }
 
-        private static string GeneratePrompt(DocLengthEnum commentLength, string chunk)
+        private static string GeneratePrompt(DocLengthEnum commentLength, string method)
         {
             var commentLengthStr = commentLength.ToString().ToLower();
-            return $"Comment length: {commentLengthStr}\nCode Chunk:\n{chunk}";
+            return $"XML Comment length: {commentLengthStr}\nMethod:\n{method}";
         }
 
         private static string ExtractContentFromResponse(string jsonResponse)
@@ -109,10 +113,8 @@ namespace AutoDoc.LLM
 
         private static bool ValidateResponse(string response)
         {
-            var lines = response.Split(Separator, StringSplitOptions.RemoveEmptyEntries);
-
-            return lines.All(line =>
-                !line.StartsWith("You are") && !line.Contains("ONLY TASK") && !line.Contains("Comment length:"));
+            // Simple validation to ensure the response contains a comment
+            return response.Trim().StartsWith("///");
         }
     }
 }
