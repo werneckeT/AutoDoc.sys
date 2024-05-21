@@ -8,37 +8,20 @@ using System;
 
 namespace AutoDoc.Core
 {
-    public class AutoDocProcessor
+    public class AutoDocProcessor(
+        IDirectoryScanner directoryScanner,
+        IMethodExtractor methodExtractor,
+        ILlmClient llmClient,
+        IMethodMerger methodMerger,
+        ICommentIndentationFixer commentIndentationFixer,
+        AutoDocConfig config)
     {
-        private readonly IDirectoryScanner _directoryScanner;
-        private readonly IMethodExtractor _methodExtractor;
-        private readonly ILlmClient _llmClient;
-        private readonly IMethodMerger _methodMerger;
-        private readonly ICommentIndentationFixer _commentIndentationFixer;
-        private readonly AutoDocConfig _config;
-
-        public AutoDocProcessor(
-            IDirectoryScanner directoryScanner,
-            IMethodExtractor methodExtractor,
-            ILlmClient llmClient,
-            IMethodMerger methodMerger,
-            ICommentIndentationFixer commentIndentationFixer,
-            AutoDocConfig config)
-        {
-            _directoryScanner = directoryScanner;
-            _methodExtractor = methodExtractor;
-            _llmClient = llmClient;
-            _methodMerger = methodMerger;
-            _commentIndentationFixer = commentIndentationFixer;
-            _config = config;
-        }
-
         public async Task ProcessAsync()
         {
             try
             {
                 // Step 1: Scanning directories
-                var files = _directoryScanner.Scan(_config.ProjectPath, _config.ExcludedProjects ?? new List<string>(), _config.FileTypes ?? new List<string>());
+                var files = directoryScanner.Scan(config.ProjectPath, config.ExcludedProjects ?? [], config.FileTypes ?? []);
 
                 var totalFiles = files.Count;
                 var processedFiles = 0;
@@ -60,7 +43,7 @@ namespace AutoDoc.Core
             while (true)
             {
                 // Step 2: Extracting methods from the file
-                var methods = _methodExtractor.ExtractMethods(file);
+                var methods = methodExtractor.ExtractMethods(file);
 
                 if (methods.Count == 0)
                 {
@@ -80,26 +63,26 @@ namespace AutoDoc.Core
                     Console.WriteLine($"Processing method {processedMethods}/{totalMethods} in file {file}");
 
                     // Step 3: Documenting each method
-                    var documentedComment = await _llmClient.GetDocumentationAsync(_config.DocLength, method);
+                    var documentedComment = await llmClient.GetDocumentationAsync(config.DocLength, method);
 
                     // Validate the response (this is done inside the LLM client)
                     documentedMethods.Add((documentedComment, method, indentation));
 
                     // Display progress
                     var percentComplete = (int)((double)processedMethods / totalMethods * 100);
-                    Console.WriteLine($"Documented method {processedMethods}/{totalMethods} ({percentComplete}% complete): {method[..Math.Min(method.Length, 30)]}...");
+                    Console.WriteLine($"Documented method {processedMethods}/{totalMethods} ({percentComplete}% complete): {method.TrimStart()[..Math.Min(method.Length, 40)]}...");
                 }
 
                 Console.WriteLine($"Completed documentation for file {processedFiles}/{totalFiles}: {file}");
 
                 // Step 4: Merging the documented methods
-                var documentedFile = _methodMerger.MergeMethods(file, documentedMethods);
+                var documentedFile = methodMerger.MergeMethods(file, documentedMethods);
 
                 // Step 5: Saving the documented file
-                var documentedFilePath = _methodMerger.SaveMergedFile(file, documentedFile);
+                var documentedFilePath = methodMerger.SaveMergedFile(file, documentedFile);
 
                 // Step 6: Fixing indentation
-                _commentIndentationFixer.FixIndentation(documentedFilePath);
+                commentIndentationFixer.FixIndentation(documentedFilePath);
 
                 // Step 7: Verify the line counts
                 if (!VerifyLineCounts(file, documentedFilePath))

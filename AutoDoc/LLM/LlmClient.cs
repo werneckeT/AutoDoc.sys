@@ -29,14 +29,14 @@ namespace AutoDoc.LLM
 
         public async Task<string> GetDocumentationAsync(DocLengthEnum commentLength, string method)
         {
-            return await GetDocumentationAsync(commentLength, method, 3);
+            return await GetDocumentationAsync(commentLength, method, 10);
         }
 
         private async Task<string> GetDocumentationAsync(DocLengthEnum commentLength, string method, int retry)
         {
             if (retry < 0)
             {
-                throw new InvalidOperationException("LLM response validation failed.");
+                return string.Empty;
             }
 
             if (string.IsNullOrEmpty(_modelIdentifier))

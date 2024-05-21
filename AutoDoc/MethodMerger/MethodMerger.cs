@@ -77,7 +77,7 @@ namespace AutoDoc.MethodMerger
 
             // Determine the directory and filename for the new file
             var directory = Path.GetDirectoryName(originalFilePath);
-            var fileName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFilePath) + "_documented" + Path.GetExtension(originalFilePath));
+            var fileName = SanitizeFileName(Path.GetFileNameWithoutExtension(originalFilePath) /*+ "_documented"*/ + Path.GetExtension(originalFilePath));
             var newFilePath = Path.Combine(directory ?? throw new InvalidOperationException("Directory not found to combine to new path"), fileName);
 
             File.WriteAllText(newFilePath, mergedContent);
