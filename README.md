@@ -29,10 +29,11 @@ This is the main component that orchestrates the entire process. It uses all the
 
 To use AutoDoc, you need to provide a configuration file. If no configuration file is provided, the application will look for a file named `defaultConfig.json`.
 
-Here is an example of how to run AutoDoc:
+### Here is an example of how to run AutoDoc
+First, built the project, then run:
 
 ```sh
-dotnet run --project ./path-to-your-project AutoDoc --config ./path-to-your-config.json
+.\AutoDoc.exe path-to-your-config.json
 ```
 If the process completes successfully, you will see the message "Project documentation completed successfully." If there are any errors during the process, they will be printed to the console.
 
